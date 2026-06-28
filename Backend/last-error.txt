@@ -1,0 +1,28 @@
+ZodError: [
+  {
+    "expected": "number",
+    "code": "invalid_type",
+    "path": [
+      "purchasePrice"
+    ],
+    "message": "Invalid input: expected number, received string"
+  },
+  {
+    "expected": "number",
+    "code": "invalid_type",
+    "path": [
+      "price"
+    ],
+    "message": "Invalid input: expected number, received string"
+  }
+]
+    at updateProduct (E:\Vin-Billing\Backend\src\modules\products\products.controller.ts:46:45)
+    at Layer.handleRequest (E:\Vin-Billing\Backend\node_modules\router\lib\layer.js:152:17)
+    at next (E:\Vin-Billing\Backend\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (E:\Vin-Billing\Backend\node_modules\router\lib\route.js:117:3)
+    at handle (E:\Vin-Billing\Backend\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (E:\Vin-Billing\Backend\node_modules\router\lib\layer.js:152:17)
+    at E:\Vin-Billing\Backend\node_modules\router\index.js:295:15
+    at param (E:\Vin-Billing\Backend\node_modules\router\index.js:600:14)
+    at param (E:\Vin-Billing\Backend\node_modules\router\index.js:610:14)
+    at processParams (E:\Vin-Billing\Backend\node_modules\router\index.js:664:3)

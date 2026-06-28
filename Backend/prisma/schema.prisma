@@ -1,0 +1,720 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+  TECHNICIAN
+}
+
+model User {
+  id         String    @id @default(uuid())
+  name       String
+  email      String    @unique
+  phone      String    @unique
+  password   String // bcrypt hash
+  role       UserRole  @default(STAFF)
+  is_active  Boolean   @default(true)
+  avatar_url String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  refresh_tokens RefreshToken[]
+  technician     Technician?
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String   @unique
+  expires_at DateTime
+  user       User     @relation(fields: [user_id], references: [id])
+}
+
+// Placeholder for future modules to prevent Prisma relation errors
+model Technician {
+  id              String            @id @default(uuid())
+  user_id         String            @unique
+  specializations ProductCategory[]
+  is_available    Boolean           @default(true)
+  created_at      DateTime          @default(now())
+  user            User              @relation(fields: [user_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// CRM MODULE
+// ----------------------------------------------------------------------
+
+enum CustomerType {
+  INDIVIDUAL
+  BUSINESS
+  GOVERNMENT
+  SCHOOL
+  HOSPITAL
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  AMC_CUSTOMER
+  PREMIUM_CUSTOMER
+}
+
+model Customer {
+  id            String       @id @default(uuid())
+  customer_code String?      @unique
+  name          String
+  phone         String
+  phone_alt     String?
+  email         String?
+  dob           DateTime?
+  anniversary   DateTime?
+  
+  gst_number    String?
+  pan_number    String?
+  business_name String?
+
+  customer_type CustomerType @default(INDIVIDUAL)
+  lead_source   LeadSource?
+
+  status        CustomerStatus @default(ACTIVE)
+
+  preferred_time String?
+  service_area   String?
+  interests      String[]     @default([])
+
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+  deleted_at    DateTime?
+
+  addresses          CustomerAddress[]
+  installed_products CustomerProduct[]
+  installations      CustomerInstallation[]
+  notes              CustomerNote[]
+  invoices           Invoice[]
+  amc_contracts      AmcContract[]
+  service_tickets    ServiceTicket[]
+  leads              Lead[]
+  quotations         Quotation[]
+  warranties         Warranty[]
+
+  @@index([phone])
+  @@index([name, phone])
+}
+
+model CustomerAddress {
+  id          String   @id @default(uuid())
+  customer_id String
+  label       String // "Home", "Office", "Site"
+  address_1   String
+  address_2   String?
+  area        String?
+  village     String?
+  city        String
+  district    String?
+  state       String?
+  pincode     String
+  latitude    Float?
+  longitude   Float?
+  is_default  Boolean  @default(false)
+  customer    Customer @relation(fields: [customer_id], references: [id])
+}
+
+model CustomerProduct {
+  id             String    @id @default(uuid())
+  customer_id    String
+  product_id     String
+  serial_number  String?
+  installed_date DateTime?
+  invoice_id     String?
+  notes          String?
+  metadata       Json?     // Stores instance-specific details (e.g. location_installed)
+  customer       Customer  @relation(fields: [customer_id], references: [id])
+  product        Product   @relation(fields: [product_id], references: [id])
+}
+
+model CustomerInstallation {
+  id                String   @id @default(uuid())
+  customer_id       String
+  product_category  ProductCategory
+  brand             String
+  model             String
+  serial_number     String?
+  installation_date DateTime?
+  warranty_end_date DateTime?
+  amc_status        AmcStatus @default(ACTIVE)
+  technician_id     String?
+  
+  customer Customer @relation(fields: [customer_id], references: [id])
+}
+
+model CustomerNote {
+  id          String   @id @default(uuid())
+  customer_id String
+  note        String
+  created_by  String
+  created_at  DateTime @default(now())
+  customer    Customer @relation(fields: [customer_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// PLACEHOLDERS (To resolve relations)
+// ----------------------------------------------------------------------
+
+// ----------------------------------------------------------------------
+// PRODUCT MODULE
+// ----------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  is_custom   Boolean   @default(false)
+  products    Product[]
+  brands      Brand[]
+}
+
+model Brand {
+  id          String    @id @default(uuid())
+  name        String
+  category_id String
+  category    Category  @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  is_custom   Boolean   @default(false)
+
+  @@unique([name, category_id])
+}
+
+model Product {
+  id              String    @id @default(uuid())
+  category_id     String
+  brand           String
+  model           String
+  sku             String    @unique
+  barcode         String?   @unique
+  description     String?
+  image_url       String?
+  mrp             Decimal   @db.Decimal(10, 2)
+  selling_price   Decimal   @db.Decimal(10, 2)
+  cost_price      Decimal   @db.Decimal(10, 2)
+  gst_rate        Decimal   @db.Decimal(5, 2) // 5, 12, 18, 28
+  hsn_code        String?
+  unit            String    @default("PCS")
+  warranty_months Int       @default(0)
+  is_serialized   Boolean   @default(false) // CCTV units, inverters
+  metadata        Json?     // Stores dynamic category fields (e.g. resolution, capacity)
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+
+  category          Category          @relation(fields: [category_id], references: [id])
+  inventory         Inventory?
+  serial_items      SerialItem[]
+  invoice_items     InvoiceItem[]
+  quotation_items   QuotationItem[]
+  customer_products CustomerProduct[]
+  warranties        Warranty[]
+  amcContracts      AmcContract[]
+
+  @@index([barcode])
+}
+
+model Inventory {
+  id              String   @id @default(uuid())
+  product_id      String   @unique
+  qty_on_hand     Int      @default(0)
+  qty_reserved    Int      @default(0)
+  low_stock_alert Int      @default(5)
+  updated_at      DateTime @updatedAt
+  product         Product  @relation(fields: [product_id], references: [id])
+}
+
+model SerialItem {
+  id           String           @id @default(uuid())
+  product_id   String
+  serial_no    String           @unique
+  status       SerialItemStatus @default(IN_STOCK)
+  supplier_id  String?
+  purchased_at DateTime?
+  invoice_id   String?
+  created_at   DateTime         @default(now())
+  product      Product          @relation(fields: [product_id], references: [id])
+}
+
+model PurchaseOrder {
+  id           String              @id @default(uuid())
+  po_number    String              @unique
+  supplier_id  String
+  status       PurchaseOrderStatus @default(DRAFT)
+  total_amount Decimal             @db.Decimal(10, 2)
+  notes        String?
+  ordered_at   DateTime?
+  received_at  DateTime?
+  created_at   DateTime            @default(now())
+  updated_at   DateTime            @updatedAt
+
+  supplier Supplier            @relation(fields: [supplier_id], references: [id])
+  items    PurchaseOrderItem[]
+}
+
+model PurchaseOrderItem {
+  id           String        @id @default(uuid())
+  po_id        String
+  product_id   String
+  qty          Int
+  unit_cost    Decimal       @db.Decimal(10, 2)
+  received_qty Int           @default(0)
+  po           PurchaseOrder @relation(fields: [po_id], references: [id])
+}
+
+model StockMovement {
+  id            String            @id @default(uuid())
+  product_id    String
+  qty_change    Int
+  movement_type StockMovementType
+  reference_id  String?
+  note          String?
+  created_by    String
+  created_at    DateTime          @default(now())
+
+  @@index([created_at])
+}
+
+enum SerialItemStatus {
+  IN_STOCK
+  SOLD
+  RETURNED
+  DAMAGED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGE
+  TRANSFER
+}
+
+model Supplier {
+  id           String    @id @default(uuid())
+  name         String
+  contact_name String?
+  phone        String
+  email        String?
+  gst_number   String?
+  address      String?
+  outstanding  Decimal   @default(0) @db.Decimal(10, 2)
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+
+  pos PurchaseOrder[]
+}
+
+// InvoiceItem removed, integrated into Billing Module below
+
+// QuotationItem removed, integrated into Quotation Module below
+
+// ----------------------------------------------------------------------
+// BILLING MODULE
+// ----------------------------------------------------------------------
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  CHEQUE
+  BANK_TRANSFER
+  CREDIT
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  invoice_number String        @unique
+  customer_id    String
+  status         InvoiceStatus @default(DRAFT)
+  invoice_date   DateTime      @default(now())
+  due_date       DateTime?
+  subtotal       Decimal       @db.Decimal(10, 2)
+  discount       Decimal       @default(0) @db.Decimal(10, 2)
+  cgst           Decimal       @db.Decimal(10, 2)
+  sgst           Decimal       @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  amount_paid    Decimal       @default(0) @db.Decimal(10, 2)
+  notes          String?
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  deleted_at     DateTime?
+
+  customer Customer      @relation(fields: [customer_id], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([created_at])
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoice_id  String
+  product_id  String
+  serial_no   String?
+  description String
+  qty         Int
+  unit_price  Decimal @db.Decimal(10, 2)
+  discount    Decimal @default(0) @db.Decimal(10, 2)
+  gst_rate    Decimal @db.Decimal(5, 2)
+  gst_amount  Decimal @db.Decimal(10, 2)
+  line_total  Decimal @db.Decimal(10, 2)
+  invoice     Invoice @relation(fields: [invoice_id], references: [id])
+  product     Product @relation(fields: [product_id], references: [id])
+}
+
+model Payment {
+  id           String        @id @default(uuid())
+  invoice_id   String
+  amount       Decimal       @db.Decimal(10, 2)
+  method       PaymentMethod
+  reference_no String?
+  paid_at      DateTime      @default(now())
+  notes        String?
+  created_by   String
+  invoice      Invoice       @relation(fields: [invoice_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// AMC MODULE
+// ----------------------------------------------------------------------
+
+enum AmcStatus {
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  RENEWED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  IN_APP
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+model AmcContract {
+  id            String    @id @default(uuid())
+  amc_number    String    @unique
+  customer_id   String
+  product_id    String
+  serial_number String?
+  start_date    DateTime
+  end_date      DateTime
+  total_visits  Int       @default(4)
+  visits_done   Int       @default(0)
+  amount        Decimal   @db.Decimal(10, 2)
+  status        AmcStatus @default(ACTIVE)
+  notes         String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  customer  Customer      @relation(fields: [customer_id], references: [id])
+  product   Product       @relation(fields: [product_id], references: [id])
+  visits    AmcVisit[]
+  reminders AmcReminder[]
+
+  @@index([end_date, status])
+}
+
+model AmcVisit {
+  id            String      @id @default(uuid())
+  amc_id        String
+  visited_at    DateTime
+  technician_id String
+  notes         String?
+  photos        String[]
+  created_at    DateTime    @default(now())
+  amc           AmcContract @relation(fields: [amc_id], references: [id])
+}
+
+model AmcReminder {
+  id        String              @id @default(uuid())
+  amc_id    String
+  remind_at DateTime
+  channel   NotificationChannel
+  sent      Boolean             @default(false)
+  sent_at   DateTime?
+  amc       AmcContract         @relation(fields: [amc_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// SERVICE TICKET MODULE
+// ----------------------------------------------------------------------
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model ServiceTicket {
+  id               String       @id @default(uuid())
+  ticket_number    String       @unique // SRV-2024-0001
+  customer_id      String
+  product_id       String?
+  serial_number    String?
+  complaint        String
+  status           TicketStatus @default(OPEN)
+  priority         Priority     @default(MEDIUM)
+  assigned_to      String? // technician user_id
+  scheduled_date   DateTime?
+  resolved_at      DateTime?
+  resolution_notes String?
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+  deleted_at       DateTime?
+
+  customer Customer       @relation(fields: [customer_id], references: [id])
+  visits   ServiceVisit[]
+  photos   ServicePhoto[]
+
+  @@index([created_at])
+}
+
+model ServiceVisit {
+  id            String        @id @default(uuid())
+  ticket_id     String
+  technician_id String
+  visited_at    DateTime
+  notes         String?
+  parts_used    Json? // [{product_id, qty, serial_no}]
+  signature_url String? // customer signature image
+  created_at    DateTime      @default(now())
+  ticket        ServiceTicket @relation(fields: [ticket_id], references: [id])
+}
+
+model ServicePhoto {
+  id          String        @id @default(uuid())
+  ticket_id   String
+  url         String
+  caption     String?
+  uploaded_by String
+  created_at  DateTime      @default(now())
+  ticket      ServiceTicket @relation(fields: [ticket_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// LEAD MODULE
+// ----------------------------------------------------------------------
+
+enum ProductCategory {
+  CCTV
+  RO_PURIFIER
+  BATTERY
+  INVERTER
+  SOLAR
+  ACCESSORIES
+  SERVICE_PARTS
+}
+
+enum LeadSource {
+  GOOGLE_ADS
+  WEBSITE
+  WHATSAPP
+  REFERENCE
+  WALK_IN
+  SOCIAL_MEDIA
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  WON
+  LOST
+}
+
+model Lead {
+  id            String          @id @default(uuid())
+  name          String
+  phone         String
+  email         String?
+  source        LeadSource
+  interested_in ProductCategory
+  notes         String?
+  status        LeadStatus      @default(NEW)
+  assigned_to   String? // user id
+  customer_id   String? // set when lead is converted
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+  deleted_at    DateTime?
+
+  followups LeadFollowup[]
+  customer  Customer?      @relation(fields: [customer_id], references: [id])
+
+  @@index([status, assigned_to])
+}
+
+model LeadFollowup {
+  id          String    @id @default(uuid())
+  lead_id     String
+  note        String
+  followup_at DateTime
+  done        Boolean   @default(false)
+  done_at     DateTime?
+  created_by  String
+  lead        Lead      @relation(fields: [lead_id], references: [id])
+}
+
+enum NotificationType {
+  AMC_RENEWAL
+  AMC_EXPIRED
+  INVOICE_GENERATED
+  PAYMENT_RECEIVED
+  WARRANTY_EXPIRY
+  SERVICE_REMINDER
+  LOW_STOCK
+  TICKET_ASSIGNED
+  TICKET_COMPLETED
+  LEAD_FOLLOWUP
+}
+
+model Notification {
+  id           String              @id @default(uuid())
+  user_id      String? // null = system-wide
+  type         NotificationType
+  title        String
+  body         String
+  channel      NotificationChannel
+  reference_id String?
+  is_read      Boolean             @default(false)
+  sent         Boolean             @default(false)
+  sent_at      DateTime?
+  created_at   DateTime            @default(now())
+}
+
+// ----------------------------------------------------------------------
+// QUOTATION MODULE
+// ----------------------------------------------------------------------
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+model Quotation {
+  id               String          @id @default(uuid())
+  quotation_number String          @unique // VT-Q-2024-0001
+  customer_id      String
+  status           QuotationStatus @default(DRAFT)
+  valid_until      DateTime?
+  subtotal         Decimal         @db.Decimal(10, 2)
+  discount         Decimal         @default(0) @db.Decimal(10, 2)
+  total            Decimal         @db.Decimal(10, 2)
+  notes            String?
+  converted_to     String? // invoice_id once converted
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  customer Customer        @relation(fields: [customer_id], references: [id])
+  items    QuotationItem[]
+}
+
+model QuotationItem {
+  id           String    @id @default(uuid())
+  quotation_id String
+  product_id   String
+  description  String
+  qty          Int
+  unit_price   Decimal   @db.Decimal(10, 2)
+  discount     Decimal   @default(0) @db.Decimal(10, 2)
+  gst_rate     Decimal   @db.Decimal(5, 2)
+  line_total   Decimal   @db.Decimal(10, 2)
+  quotation    Quotation @relation(fields: [quotation_id], references: [id])
+  product      Product   @relation(fields: [product_id], references: [id])
+}
+
+// ----------------------------------------------------------------------
+// WARRANTY MODULE
+// ----------------------------------------------------------------------
+
+enum WarrantyStatus {
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+}
+
+enum ClaimStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+  REJECTED
+}
+
+model Warranty {
+  id              String         @id @default(uuid())
+  customer_id     String
+  product_id      String
+  serial_number   String?
+  invoice_id      String?
+  start_date      DateTime
+  end_date        DateTime
+  warranty_months Int
+  status          WarrantyStatus @default(ACTIVE)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  customer Customer        @relation(fields: [customer_id], references: [id])
+  product  Product         @relation(fields: [product_id], references: [id])
+  claims   WarrantyClaim[]
+}
+
+model WarrantyClaim {
+  id          String      @id @default(uuid())
+  warranty_id String
+  description String
+  status      ClaimStatus @default(OPEN)
+  ticket_id   String? // linked service ticket
+  created_at  DateTime    @default(now())
+  warranty    Warranty    @relation(fields: [warranty_id], references: [id])
+}
